@@ -1,0 +1,17 @@
+[Unit]
+Description=Agent Bot Telegram polling service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentbot
+WorkingDirectory=/opt/agent_bot
+EnvironmentFile=/opt/agent_bot/.env
+ExecStart=/opt/agent_bot/venv/bin/python main.py
+Restart=always
+RestartSec=10
+# Loglar: journalctl -u agentbot -f
+
+[Install]
+WantedBy=multi-user.target

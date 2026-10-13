@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.pytest_cache
+.env
+data/documents/*
+data/temp_photos/*
+tests
