@@ -112,6 +112,8 @@ class MetaPromptEngine:
             f"- Ruxsat: # sarlavha, **qalin**, *og'ma*, ~~o'chirilgan~~, `kod`, ```blok```, "
             f"[matn](https://...), > iqtibos, - ro'yxat, | jadval |.\n"
             f"- Bot matnni avtomatik Telegram HTML ga o'giradi, shuning uchun escape (\\*, \\_) qilmang.\n"
+            f"- Jadval: pipe-notatsiya (| A | B | + |---|\n"
+            f"  separator), kataklar QISQA (har biri 15 belgidan kam) — mobil ekranga sig'ishi uchun.\n"
             f"FORMULA DIRECTIVE (docx-aniq notatsiya — LaTeX/rasm emas, oddiy matn):\n"
             f"- Daraja: x^2, 10^-3, e^{{i*pi}} | Indeks: x_1, a_{{max}} | "
             f"Ildiz: sqrt(x) | Kasr: (a+b)/c | Yunon: pi, alpha.\n"

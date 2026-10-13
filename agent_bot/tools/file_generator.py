@@ -53,15 +53,20 @@ class FileGenerator:
                 h_run.font.bold = True
 
             if sec_content:
-                for block in sec_content.split("\n"):
-                    if not block.strip():
-                        continue
-                    from agent_bot.tools.formula import add_rich_paragraph
+                from agent_bot.tools.formula import add_rich_paragraph
+                from agent_bot.tools.tables import add_word_table, split_blocks
 
-                    p = doc.add_paragraph()
-                    p.paragraph_format.line_spacing = 1.15
-                    p.paragraph_format.space_after = Pt(4)
-                    add_rich_paragraph(p, block)
+                for kind, payload in split_blocks(sec_content):
+                    if kind == "table":
+                        add_word_table(doc, payload)
+                        continue
+                    for block in str(payload).split("\n"):
+                        if not block.strip():
+                            continue
+                        p = doc.add_paragraph()
+                        p.paragraph_format.line_spacing = 1.15
+                        p.paragraph_format.space_after = Pt(4)
+                        add_rich_paragraph(p, block)
 
         if not filename:
             safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip()

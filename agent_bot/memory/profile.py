@@ -22,6 +22,7 @@ class UserProfile:
     name: str = ""
     language: str = "uz"
     voice_out: bool = False  # inglizcha ovozli javob (Orpheus: faqat EN)
+    ai_mode: str = "gpt6"  # "gpt6" (120B reasoning/Gemini), "fast" (0.5s), "auto"
 
 
 def _path(user_id: int) -> Path:
@@ -41,6 +42,7 @@ def load_profile(user_id: int) -> UserProfile:
             name=str(data.get("name", ""))[:60],
             language=str(data.get("language", "uz"))[:8],
             voice_out=bool(data.get("voice_out", False)),
+            ai_mode=str(data.get("ai_mode", "gpt6")),
         )
     except Exception:
         logger.warning("Profil o'qilmadi, default: %s", user_id)

@@ -6,8 +6,11 @@ from agent_bot.tools.voice import split_for_tts, transcribe_voice, synthesize_sp
 from agent_bot.tools.formula import (
     add_rich_paragraph, add_pptx_runs, parse_rich, to_cell_rich_text, to_unicode_math,
 )
+from agent_bot.tools.tables import MdTable, add_word_table, align_pre, parse_markdown_tables, split_blocks
 
 __all__ = ["safe_calculate", "CalcResult", "PythonSandbox", "FileGenerator",
            "split_for_tts", "transcribe_voice", "synthesize_speech",
            "add_rich_paragraph", "add_pptx_runs", "parse_rich",
-           "to_cell_rich_text", "to_unicode_math"]
+           "to_cell_rich_text", "to_unicode_math",
+           "MdTable", "add_word_table", "align_pre",
+           "parse_markdown_tables", "split_blocks"]

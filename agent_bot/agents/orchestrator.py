@@ -38,19 +38,21 @@ from agent_bot.telegram.formatting import (
 logger = logging.getLogger(__name__)
 
 
-async def _call_llm(llm: object, system: str, prompt: str) -> tuple[str, str]:
+async def _call_llm(llm: object, system: str, prompt: str, model_preference: Optional[str] = None) -> tuple[str, str]:
     """Har qanday LLM interfeysini (eski LLMResponse / yangi ModelResponse) normallashtiradi.
 
     Eski: generate(system, prompt) -> .text / .model
-    Yangi (ModelRouter V2): generate(prompt, system_instruction=...) -> .content / .model_name
+    Yangi (ModelRouter V2): generate(prompt, system_instruction=..., model_preference=...) -> .content / .model_name
     Qaytaradi: (text, model_name). Bo'sh javobda RuntimeError.
     """
     generate = getattr(llm, "generate")
     try:
-        resp = await generate(system, prompt)
+        resp = await generate(prompt, system_instruction=system, model_preference=model_preference)
     except TypeError:
-        # Yangi imzo: generate(prompt, system_instruction=...)
-        resp = await generate(prompt, system_instruction=system)
+        try:
+            resp = await generate(system, prompt)
+        except TypeError:
+            resp = await generate(prompt, system_instruction=system)
     text = getattr(resp, "text", None) or getattr(resp, "content", "") or ""
     model = (
         getattr(resp, "model", None)
@@ -238,6 +240,17 @@ class AgentOrchestrator:
         except Exception:
             logger.warning("Profil yuklanmadi")
 
+        # Jonli internet qidiruvi (Web Search) agar dolzarb ma'lumot yoki qidiruv so'ralsa
+        if any(kw in text.lower() for kw in ["qidir", "search", "yangilik", "kursi", "narxi", "ob-havo"]):
+            try:
+                from agent_bot.tools.web_search import WebSearchTool
+                s_results = WebSearchTool.search(text, max_results=3)
+                if s_results:
+                    s_str = "\n".join(f"• {r['title']}: {r['snippet']}" for r in s_results)
+                    context = f"[JONLI INTERNET MA'LUMOTLARI]:\n{s_str}\n\n{context}" if context else f"[JONLI INTERNET MA'LUMOTLARI]:\n{s_str}"
+            except Exception as e:
+                logger.warning(f"WebSearch xatosi: {e}")
+
         # 2. Murakkab so'rov -> parallel mutaxassis rejimi
         if is_complex(intent, text):
             result = await self._handle_deep(user_id, text, intent, confidence, language, context)
@@ -247,6 +260,21 @@ class AgentOrchestrator:
         self.store.add(user_id, "user", text)
         self.store.add(user_id, "assistant", result.raw_answer[:2000])
         return result
+
+    def _resolve_model_pref(self, user_id: int, intent: IntentType, text: str) -> str:
+        """Foydalanuvchi tanlagan intellekt rejimiga qarab model afzalligini aniqlaydi."""
+        try:
+            from agent_bot.memory.profile import load_profile
+            prof = load_profile(user_id)
+            if prof.ai_mode in ("gpt6", "fast", "gemini"):
+                return prof.ai_mode
+            if prof.ai_mode == "auto":
+                if is_complex(intent, text) or intent in _DEEP_INTENTS:
+                    return "gpt6"
+                return "fast"
+        except Exception:
+            pass
+        return "gpt6"
 
     async def _handle_single(
         self,
@@ -263,8 +291,9 @@ class AgentOrchestrator:
             project_context=context,
             language=language,
         )
+        model_pref = self._resolve_model_pref(user_id, intent, text)
         raw, model = await self._generate_with_fallback(
-            prompt_data["system_instruction"], prompt_data["prompt"]
+            prompt_data["system_instruction"], prompt_data["prompt"], model_preference=model_pref
         )
         # 3. QA pass (muhandislik/apparat uchun ikkinchi ko'z)
         if intent in (IntentType.ENGINEERING_ANALYSIS, IntentType.HARDWARE_COMPATIBILITY):
@@ -308,13 +337,14 @@ class AgentOrchestrator:
             project_context=context,
             language=language,
         )
+        model_pref = self._resolve_model_pref(user_id, intent, text)
         try:
             (raw_main, model), (raw_alt, _) = await asyncio.gather(
                 self._generate_with_fallback(
-                    analyst_prompt["system_instruction"], analyst_prompt["prompt"]
+                    analyst_prompt["system_instruction"], analyst_prompt["prompt"], model_preference=model_pref
                 ),
                 self._generate_with_fallback(
-                    critic_prompt["system_instruction"], critic_prompt["prompt"]
+                    critic_prompt["system_instruction"], critic_prompt["prompt"], model_preference="fast"
                 ),
             )
         except Exception:
@@ -401,9 +431,11 @@ class AgentOrchestrator:
             sections.append(current)
         return sections[:12]
 
-    async def _generate_with_fallback(self, system: str, prompt: str) -> tuple[str, str]:
+    async def _generate_with_fallback(
+        self, system: str, prompt: str, model_preference: Optional[str] = None
+    ) -> tuple[str, str]:
         try:
-            return await _call_llm(self.llm, system, prompt)
+            return await _call_llm(self.llm, system, prompt, model_preference=model_preference)
         except Exception as exc:
             logger.exception("Primary LLM failed, trying Mock fallback")
             if isinstance(self.llm, MockLLMClient):

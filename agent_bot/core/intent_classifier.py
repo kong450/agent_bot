@@ -45,11 +45,18 @@ class IntentClassifier:
         ]
     }
 
+    # O'zbek qo'shimchalari: 'xarajatlar', 'kodlardagi', 'dvigatelning' ham ushlanadi.
+    # 'hisobot' ga tegmaydi — 'ot' bu ro'yxatda yo'q.
+    _SUFFIXES = r"(?:lar|ning|ni|nu|ga|ka|qa|da|ta|dan|tan|siz|li|dagi|chi|lar)*"
+
     @classmethod
     def _word_hit(cls, text_lower: str, word: str) -> bool:
-        """So'zni chegara bilan qidiradi: 'hisob' 'hisobot' ichida topilmasligi kerak."""
+        """So'zni chegara + qo'shimchalar bilan qidiradi."""
         # Ko'p so'zli frazalar uchun ham ishlaydi (masalan, 'mos keladimi')
-        pattern = r"(?<!\w)" + re.escape(word) + r"(?!\w)"
+        if " " in word:
+            pattern = r"(?<!\w)" + re.escape(word) + r"(?!\w)"
+        else:
+            pattern = r"(?<!\w)" + re.escape(word) + cls._SUFFIXES + r"(?!\w)"
         return re.search(pattern, text_lower) is not None
 
     @classmethod

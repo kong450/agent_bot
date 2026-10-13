@@ -6,6 +6,7 @@ inline actions (file/variant/shorten) va destructive confirm flow.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import time
 from collections import defaultdict
@@ -80,6 +81,19 @@ def _confirm_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="confirm:yes"),
                 InlineKeyboardButton(text="❌ Bekor", callback_data="confirm:no"),
             ]
+        ]
+    )
+
+
+def _mode_keyboard(current_mode: str = "gpt6") -> InlineKeyboardMarkup:
+    m_gpt6 = "🧠 GPT-6 (120B / Gemini)" + (" ✅" if current_mode == "gpt6" else "")
+    m_fast = "⚡ Tezkor (0.5s)" + (" ✅" if current_mode == "fast" else "")
+    m_auto = "🤖 Avto (Moslashuvchan)" + (" ✅" if current_mode == "auto" else "")
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=m_gpt6, callback_data="mode:gpt6")],
+            [InlineKeyboardButton(text=m_fast, callback_data="mode:fast")],
+            [InlineKeyboardButton(text=m_auto, callback_data="mode:auto")],
         ]
     )
 
@@ -160,12 +174,20 @@ async def cmd_start(message: Message) -> None:
         await message.answer("Ruxsat yo'q.")
         return
     await message.answer(
-        "Salom! Men <b>Agent Bot</b> — muhandislik, apparatura mosligi va ilmiy tahlil yordamchingiz.\n\n"
-        "Savolingizni oddiy tilda yozing. Masalan:\n"
-        "• <code>15 kVt dvigatel momenti qancha?</code>\n"
-        "• <code>ESP32 ga 12V motor ulasam bo'ladimi?</code>\n"
-        "• <code>Menga Word hisobot tayyorla</code>\n\n"
-        "Ovozli xabar ham yuborishingiz mumkin 🎧. Tanishish uchun: <code>/ism Ismingiz</code>",
+        "Salom! Men <b>Agent Bot (JARVIS)</b> — GPT-6 darajasidagi avtonom muhandislik, apparatura va tahlil yordamchingiz.\n\n"
+        "<b>Asosiy buyruqlar:</b>\n"
+        "• <code>/mode</code> — Intellekt rejimini tanlash (🧠 GPT-6 120B / ⚡ Tezkor / 🤖 Avto)\n"
+        "• <code>/gpt6</code> — GPT-6 Chuqur Tafakkur rejimini yoqish\n"
+        "• <code>/fast</code> — Chaqmoqdek tez javob rejimini yoqish\n"
+        "• <code>/ism Ismingiz</code> — Ismingizni eslab qolish\n"
+        "• <code>/status</code> — Ulanish holati va modellar\n\n"
+        "<b>Nimalar qila olaman:</b>\n"
+        "• 📐 <i>Hisob-kitoblar va formulalar:</i> Sandbox'da real hisoblangan natijalar;\n"
+        "• 📄 <i>Hujjatlar:</i> Word (.docx), Excel (.xlsx), taqdimotlar;\n"
+        "• 🌐 <i>Internetdan qidirish:</i> Jonli ma'lumotlar va yangiliklar;\n"
+        "• 👁️ <i>Rasm va sxemalar tahlili:</i> Rasm yuborsangiz tahlil qilaman;\n"
+        "• 🎧 <i>Ovozli xabarlarni tushunish</i> (Whisper orqali).\n\n"
+        "Savolingizni yozing yoki ovozli xabar yuboring!",
         parse_mode=ParseMode.HTML,
     )
 
@@ -173,10 +195,12 @@ async def cmd_start(message: Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(
-        "Format: **qalin**, *og'ma*, `kod`, ```blok```, [link](https://...) — barchasi avtomatik chiroyli chiqadi.\n"
-        "Jadval va formulalar ham buzilmaydi.\n"
-        "Murakkab savolda 2 mutaxassis parallel ishlaydi + QA tekshiradi.\n"
-        "Oqibatli amal (o'chirish/to'lov) da avval tasdiq so'rayman.",
+        "🧠 <b>AGENT BOT QO'LLANMASI:</b>\n\n"
+        "• <b>Formatlash:</b> **qalin**, *og'ma*, `kod`, ```blok```, formulalar (x^2, H_2O, sqrt) chiroyli chiqadi.\n"
+        "• <b>Rejimlar:</b> <code>/mode</code> orqali <b>GPT-6 Reasoning (120B)</b> yoki <b>Tezkor (0.5s)</b> rejimga o'tishingiz mumkin.\n"
+        "• <b>Hisob-kitob:</b> Muhim formulalar real Python muhitida tekshirilib [CALCULATED] belgisi qo'yiladi.\n"
+        "• <b>Fayllar:</b> 'Word qilib ber' yoki 'Excelga joyla' desangiz fayl qilib tashlab beradi.\n"
+        "• <b>Xavfsizlik:</b> O'chirish yoki xavfli amallarda avval tasdiq so'rayman.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -229,6 +253,60 @@ async def cmd_status(message: Message) -> None:
         "Ovozli javob: o'chirilgan (javoblar matn + fayl shaklida)",
     ]
     await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("mode"))
+async def cmd_mode(message: Message) -> None:
+    """Intellekt rejimini ko'rish va tanlash."""
+    user_id = _get_user_id(message)
+    if user_id is None:
+        return
+    prof = load_profile(user_id)
+    cur = prof.ai_mode or "gpt6"
+    text = (
+        "🧠 <b>AGENT BOT INTELLEKT REJIMI:</b>\n\n"
+        "1. <b>GPT-6 Rejimi (120B Reasoning + Gemini 3.8):</b>\n"
+        "• 120 milliard parametrli OpenAI Reasoning modeli orqali chuqur tahlil;\n"
+        "• Formulalar, murakkab hisoblar, muhandislik, dasturlash va tahlillar uchun.\n\n"
+        "2. <b>Tezkor Rejim (0.5s):</b>\n"
+        "• Chaqmoqdek tez javob, qisqa suhbat va tezkor maslahatlar uchun.\n\n"
+        "3. <b>Avto Rejim:</b>\n"
+        "• Savolning murakkabligiga qarab bot o'zi mos modelni belgilaydi.\n\n"
+        "<i>Quyidagi tugmalardan birini tanlang:</i>"
+    )
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=_mode_keyboard(cur))
+
+
+@router.message(Command("gpt6"))
+async def cmd_gpt6(message: Message) -> None:
+    """GPT-6 rejimini bir zumda yoqish."""
+    user_id = _get_user_id(message)
+    if user_id is None:
+        return
+    prof = load_profile(user_id)
+    prof.ai_mode = "gpt6"
+    save_profile(prof)
+    await message.answer(
+        "🧠 <b>GPT-6 Rejimi faollashtirildi!</b>\n\n"
+        "Endi bot 120 milliard parametrli Reasoning modeli va Google Gemini 3.8 orqali maksimal intellekt va chuqur tahlil bilan ishlaydi.",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(Command("fast"))
+async def cmd_fast(message: Message) -> None:
+    """Tezkor rejimni bir zumda yoqish."""
+    user_id = _get_user_id(message)
+    if user_id is None:
+        return
+    prof = load_profile(user_id)
+    prof.ai_mode = "fast"
+    save_profile(prof)
+    await message.answer(
+        "⚡ <b>Tezkor Rejim faollashtirildi!</b>\n\n"
+        "Javoblar chaqmoqdek tez (<1 soniya) taqdim etiladi.",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 @router.message(F.voice | F.audio)
@@ -377,6 +455,29 @@ async def cb_action(query: CallbackQuery) -> None:
             await query.message.answer("Fayl qiladigan javob topilmadi.")
     else:
         await query.answer()
+
+
+@router.callback_query(F.data.startswith("mode:"))
+async def on_mode_select(query: CallbackQuery) -> None:
+    """Intellekt rejimini inline tugma orqali o'zgartirish."""
+    user_id = query.from_user.id if query.from_user else None
+    if user_id is None:
+        return
+    mode = query.data.split(":")[1]
+    prof = load_profile(user_id)
+    prof.ai_mode = mode
+    save_profile(prof)
+
+    names = {
+        "gpt6": "🧠 GPT-6 (120B / Gemini)",
+        "fast": "⚡ Tezkor (0.5s)",
+        "auto": "🤖 Avto (Moslashuvchan)"
+    }
+    await query.answer(f"Tanlandi: {names.get(mode, mode)}")
+    try:
+        await query.message.edit_reply_markup(reply_markup=_mode_keyboard(mode))
+    except Exception:
+        pass
 
 
 @router.message(F.photo)

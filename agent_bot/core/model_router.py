@@ -49,12 +49,38 @@ class ModelRouter:
         system_instruction: str = "",
         model_preference: Optional[str] = None
     ) -> ModelResponse:
-        """Kaskadli generatsiya: birinchi ishlaydigan provayderdan natija olinadi."""
+        # 1. Agar maxsus Gemini so'ralgan bo'lsa
+        if model_preference and "gemini" in model_preference.lower() and self._gemini_client:
+            try:
+                config = {}
+                if system_instruction:
+                    config["system_instruction"] = system_instruction
+                response = self._gemini_client.models.generate_content(
+                    model="gemini-3.8-flash",
+                    contents=prompt,
+                    config=config
+                )
+                return ModelResponse(
+                    content=response.text.strip(),
+                    provider="Google Gemini (2026)",
+                    model_name="gemini-3.8-flash"
+                )
+            except Exception as e:
+                logger.error(f"Gemini API xatoligi: {e}")
 
-        # 1. Google Gemini (2026-yilgi eng yangi gemini-3.8-flash)
+        # 2. Groq Cloud (openai/gpt-oss-120b GPT-6 Reasoning yoki qwen/qwen3.8-27b Fast)
+        if self.settings.groq_api_key:
+            try:
+                res = await self._call_groq(prompt, system_instruction, model_preference)
+                if res.success:
+                    return res
+            except Exception as e:
+                logger.error(f"Groq API xatoligi: {e}. Gemini provayderiga o'tilmoqda...")
+
+        # 3. Google Gemini (2026-yilgi eng yangi gemini-3.8-flash)
         if self._gemini_client:
             try:
-                model_name = model_preference or "gemini-3.8-flash"
+                model_name = "gemini-3.8-flash"
                 config = {}
                 if system_instruction:
                     config["system_instruction"] = system_instruction
@@ -70,16 +96,8 @@ class ModelRouter:
                     model_name=model_name
                 )
             except Exception as e:
-                logger.error(f"Gemini API xatoligi: {e}. Groq provayderiga o'tilmoqda...")
+                logger.error(f"Gemini API xatoligi: {e}. OpenRouter provayderiga o'tilmoqda...")
 
-        # 2. Groq Cloud (O'ta tezkor Qwen 3.8 / GPT-OSS 120B)
-        if self.settings.groq_api_key:
-            try:
-                res = await self._call_groq(prompt, system_instruction, model_preference)
-                if res.success:
-                    return res
-            except Exception as e:
-                logger.error(f"Groq API xatoligi: {e}. OpenRouter provayderiga o'tilmoqda...")
 
         # 3. OpenRouter (Zaxira bepul provayder)
         if self.settings.openrouter_api_key:
@@ -150,13 +168,21 @@ class ModelRouter:
         )
 
     async def _call_groq(self, prompt: str, system_instruction: str, model: Optional[str]) -> ModelResponse:
-        """Groq Cloud API asinxron chaqiruvi."""
+        """Groq Cloud API asinxron chaqiruvi (120B GPT-6 Reasoning + Fast Qwen)."""
         headers = {
             "Authorization": f"Bearer {self.settings.groq_api_key}",
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0"
         }
-        candidate_models = [model] if model else ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+        if model == "fast":
+            candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
+        elif model in ("gpt6", "deep"):
+            candidate_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+        elif model and "/" in model:
+            candidate_models = [model, "openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+        else:
+            # Standart flagman: 120B Reasoning birinchi, zaxirada 27B Fast
+            candidate_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
 
         messages = []
         if system_instruction:
@@ -164,10 +190,12 @@ class ModelRouter:
         messages.append({"role": "user", "content": prompt})
 
         for m_name in candidate_models:
+            cur_max_tokens = 900 if "qwen" in m_name else 4096
             payload = {
                 "model": m_name,
                 "messages": messages,
-                "temperature": 0.4
+                "temperature": 0.3,
+                "max_tokens": cur_max_tokens
             }
             try:
                 async with aiohttp.ClientSession() as session:
@@ -175,12 +203,18 @@ class ModelRouter:
                         "https://api.groq.com/openai/v1/chat/completions",
                         json=payload,
                         headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=20.0)
+                        timeout=aiohttp.ClientTimeout(total=30.0)
                     ) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            content = data["choices"][0]["message"]["content"].strip()
-                            return ModelResponse(content=content, provider="Groq Cloud", model_name=m_name)
+                            msg = data["choices"][0]["message"]
+                            content = (msg.get("content") or "").strip()
+                            reasoning = (msg.get("reasoning") or "").strip()
+                            if not content and reasoning:
+                                content = reasoning
+                            if content:
+                                prov = "Groq 120B (GPT-6 Reasoning)" if "120b" in m_name else "Groq Fast"
+                                return ModelResponse(content=content, provider=prov, model_name=m_name)
                         err_text = await resp.text()
                         logger.warning(f"Groq {m_name} muvaffaqiyatsiz: {err_text}")
             except Exception as e:

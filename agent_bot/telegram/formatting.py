@@ -135,21 +135,23 @@ def markdown_to_telegram_html(text: str) -> str:
     # 6. Horizontal rule -> separator line
     text = re.sub(r"(?m)^\s*(---|\*\*\*|___)\s*$", "──────────", text)
 
-    # 7. Tables: any consecutive block with '|' (2+ lines) -> <pre> block
-    # Markdown separator row (|---|---|) is dropped.
+    # 7. Tables: pipe-blok -> ustunlari tekislangan <pre> (Telegram'da table tegi yo'q)
+    # Haqiqiy Word-jadval docx'da quriladi (tools/tables.py — yagona dvigatel).
+    from agent_bot.tools.tables import MdTable, _is_sep_row, _split_row, align_pre
+
     lines = text.split("\n")
     out_lines = []
     tbl_buf: List[str] = []
-    sep_re = re.compile(r"^\s*\|?[\s:|\-]+(\|[\s:|\-]+)*\|?\s*$")
 
     def _flush_table() -> None:
         if not tbl_buf:
             return
-        # drop separator rows like |---|---|
-        rows = [r for r in tbl_buf if not (sep_re.match(r) and "-" in r)]
-        # strip leading/trailing pipe for cleaner monospace view
-        cleaned = [re.sub(r"^\s*\|\s?", "", re.sub(r"\s?\|\s*$", "", r)) for r in rows]
-        out_lines.append("<pre>" + "\n".join(cleaned) + "</pre>")
+        rows = [_split_row(r) for r in tbl_buf if not _is_sep_row(_split_row(r))]
+        if not rows:
+            return
+        table = MdTable(headers=rows[0], rows=rows[1:]).normalized()
+        # Kataklar oldin escape qilingan — qayta escape QILINMAYDI (double-escape bo'lmasligi uchun)
+        out_lines.append("<pre>" + align_pre(table) + "</pre>")
 
     for ln in lines:
         if "|" in ln and ln.count("|") >= 1:

@@ -202,3 +202,22 @@ async def test_voice_needs_key():
     if not voice_mod.settings.groq_api_key:
         with pytest.raises(RuntimeError):
             await voice_mod.transcribe_voice(b"fake-audio")
+
+
+def test_ai_mode_support():
+    from agent_bot.memory.profile import UserProfile, save_profile, load_profile
+    from agent_bot.agents.orchestrator import AgentOrchestrator
+    from agent_bot.config.constants import IntentType
+
+    prof = UserProfile(user_id=99999, name="TestUser", ai_mode="fast")
+    save_profile(prof)
+    loaded = load_profile(99999)
+    assert loaded.ai_mode == "fast"
+
+    orch = AgentOrchestrator()
+    assert orch._resolve_model_pref(99999, IntentType.GENERAL_QUERY, "salom") == "fast"
+
+    prof.ai_mode = "gpt6"
+    save_profile(prof)
+    assert orch._resolve_model_pref(99999, IntentType.GENERAL_QUERY, "salom") == "gpt6"
+
