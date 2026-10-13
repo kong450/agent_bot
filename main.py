@@ -17,9 +17,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOKENS = [
-    "8952983428:AAFQKWOUG_l79PVLU8SPQAtajMLVF1iHpoE",  # @EVloyiha_bot
+    "8952983428:AAGkvQcsQ3UURaHPiZdNLecDVc6XsiDmYhU",  # @EVloyiha_bot (YANGI TOZA TOKEN)
     "8623266794:AAHOhvYTv0SIKOJMC7H2qevOvw62abV01n0",  # @Metanolloyiha_bot
 ]
+
 
 def get_tokens():
     env_tokens = os.environ.get("TELEGRAM_BOT_TOKENS", "").strip()
