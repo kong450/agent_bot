@@ -1,4 +1,4 @@
-"""Multi-Bot Entrypoint runner with lightweight HTTP port binding for Render Web Service."""
+"""Multi-Bot Entrypoint runner with resilient error handling and HTTP port binding."""
 import asyncio
 import logging
 import sys
@@ -17,10 +17,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOKENS = [
-    "8952983428:AAGkvQcsQ3UURaHPiZdNLecDVc6XsiDmYhU",  # @EVloyiha_bot (YANGI TOZA TOKEN)
-    "8623266794:AAHOhvYTv0SIKOJMC7H2qevOvw62abV01n0",  # @Metanolloyiha_bot
+    "8952983428:AAGkvQcsQ3UURaHPiZdNLecDVc6XsiDmYhU",  # @EVloyiha_bot
 ]
-
 
 def get_tokens():
     env_tokens = os.environ.get("TELEGRAM_BOT_TOKENS", "").strip()
@@ -32,28 +30,26 @@ def get_tokens():
     return DEFAULT_TOKENS
 
 async def start_single_bot(token: str):
-    """Har bir bot uchun alohida Dispatcher va session yaratish (No Conflict)."""
+    """Bitta botni izolyatsiyalangan holda xavfsiz ishga tushirish."""
     bot = Bot(token=token)
     dp = Dispatcher()
     dp["orchestrator"] = orchestrator
     dp.include_router(router)
 
     try:
-        # Eski to'qnashuvlarni tozalash
         await bot.delete_webhook(drop_pending_updates=True)
         bot_info = await bot.get_me()
-        logger.info(f"🚀 Bot muvaffaqiyatli ishga tushdi: @{bot_info.username}")
+        logger.info(f"🚀 Bot muvaffaqiyatli ishga tushdi: @{bot_info.username} (ID: {bot_info.id})")
         await dp.start_polling(bot, handle_signals=False)
     except Exception as e:
-        logger.error(f"Botda xatolik ({token[:10]}...): {e}")
+        logger.error(f"❌ Bot tokenida xatolik ({token[:15]}...): {e}")
     finally:
         await bot.session.close()
 
 async def handle_ping(request):
-    return web.Response(text="JARVIS Agent Bot is LIVE and HEALTHY! 🚀")
+    return web.Response(text="JARVIS Agent Bot is LIVE and RUNNING! 🚀")
 
 async def start_web_server():
-    """Render Web Service 'No open ports detected' xatosini yo'qotish uchun HTTP server."""
     port = int(os.environ.get("PORT", 8080))
     app = web.Application()
     app.router.add_get("/", handle_ping)
@@ -62,18 +58,18 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logger.info(f"🌐 HTTP Health server port {port} da ishga tushdi!")
+    logger.info(f"🌐 HTTP Health server port {port} da faol!")
 
 async def main():
     tokens = get_tokens()
-    logger.info(f"⚡ DUAL-PLATFORM: {len(tokens)} ta bot ishga tushirilmoqda...")
+    logger.info(f"⚡ Jami {len(tokens)} ta bot tekshirilmoqda...")
 
-    # 1. Render portini darhol ochish
+    # HTTP Health serverni Render uchun yoqish
     await start_web_server()
 
-    # 2. Botlarni parallel yurgazish
-    bot_tasks = [start_single_bot(t) for t in tokens]
-    await asyncio.gather(*bot_tasks)
+    # Har bir botni return_exceptions=True bilan ishga tushirish (biri xato bersa ham, ikkinchisi to'xtamaydi)
+    tasks = [start_single_bot(t) for t in tokens]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 if __name__ == "__main__":
     try:
