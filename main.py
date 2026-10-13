@@ -1,7 +1,8 @@
-"""Entrypoint runner for Agent Bot."""
+"""Multi-Bot Entrypoint runner: runs both @EVloyiha_bot and @Metanolloyiha_bot concurrently."""
 import asyncio
 import logging
 import sys
+from typing import List
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 
@@ -14,36 +15,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Ikkala bot tokenlari ro'yxati
+BOT_TOKENS = [
+    "8952983428:AAFQKWOUG_l79PVLU8SPQAtajMLVF1iHpoE",  # @EVloyiha_bot
+    "8623266794:AAHOhvYTv0SIKOJMC7H2qevOvw62abV01n0",  # @Metanolloyiha_bot
+]
+
+async def start_single_bot(token: str, dp: Dispatcher):
+    """Bitta botni xavfsiz ishga tushirish."""
+    bot = Bot(token=token)
+    try:
+        bot_info = await bot.get_me()
+        logger.info(f"🚀 Bot faollashdi: @{bot_info.username} ({bot_info.first_name})")
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    except Exception as e:
+        logger.error(f"Botda xatolik ({token[:10]}...): {e}")
+    finally:
+        await bot.session.close()
+
 async def main():
-    if not settings.telegram_bot_token or settings.telegram_bot_token == "YOUR_BOT_TOKEN":
-        logger.error(
-            "\n"
-            "====================================================================\n"
-            "❌ XATOLIK: TELEGRAM_BOT_TOKEN kiritilmagan!\n"
-            "Iltimos, C:\\Users\\user\\Desktop\\agent_bot\\.env faylini oching va\n"
-            "TELEGRAM_BOT_TOKEN=... qatoriga BotFather'dan olgan tokeningizni yozing.\n"
-            "====================================================================\n"
-        )
-        return
+    logger.info("⚡ AGENT BOT DUAL-PLATFORM (JARVIS) ishga tushirilmoqda...")
 
-    logger.info("⚡ AGENT BOT ishga tushirilmoqda...")
-    # Yagona runtime miya — handlers ichidagi instance (ikkinchi nusxa yaratilmaydi)
-
-    bot = Bot(token=settings.telegram_bot_token)
+    # Yagona boshqaruvchi Dispatcher va uning marshruti
     dp = Dispatcher()
-
-    # Orchestratorni barcha handlerlarga dependency injection orqali uzatish
     dp["orchestrator"] = orchestrator
     dp.include_router(router)
 
-    try:
-        logger.info("🚀 Polling boshlandi. Bot Telegramda faol!")
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    finally:
-        await bot.session.close()
+    # Ikkala botni bitta jarayonda parallel polling rejimida ishlatish
+    tasks = [start_single_bot(t, dp) for t in BOT_TOKENS]
+    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot to'xtatildi.")
+        logger.info("Barcha botlar to'xtatildi.")
