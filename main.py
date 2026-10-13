@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import sys
+import os
 from typing import List
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -15,11 +16,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Ikkala bot tokenlari ro'yxati
-BOT_TOKENS = [
+# Standart ikkala bot tokenlari (Koyeb Environment Variables orqali ham o'qiladi)
+DEFAULT_TOKENS = [
     "8952983428:AAFQKWOUG_l79PVLU8SPQAtajMLVF1iHpoE",  # @EVloyiha_bot
     "8623266794:AAHOhvYTv0SIKOJMC7H2qevOvw62abV01n0",  # @Metanolloyiha_bot
 ]
+
+def get_tokens() -> List[str]:
+    env_tokens = os.environ.get("TELEGRAM_BOT_TOKENS", "").strip()
+    if env_tokens:
+        return [t.strip() for t in env_tokens.split(",") if t.strip()]
+    single_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if single_token and single_token != "YOUR_BOT_TOKEN":
+        return [single_token]
+    return DEFAULT_TOKENS
 
 async def start_single_bot(token: str, dp: Dispatcher):
     """Bitta botni xavfsiz ishga tushirish."""
@@ -34,15 +44,14 @@ async def start_single_bot(token: str, dp: Dispatcher):
         await bot.session.close()
 
 async def main():
-    logger.info("⚡ AGENT BOT DUAL-PLATFORM (JARVIS) ishga tushirilmoqda...")
+    tokens = get_tokens()
+    logger.info(f"⚡ AGENT BOT DUAL-PLATFORM: {len(tokens)} ta bot ishga tushirilmoqda...")
 
-    # Yagona boshqaruvchi Dispatcher va uning marshruti
     dp = Dispatcher()
     dp["orchestrator"] = orchestrator
     dp.include_router(router)
 
-    # Ikkala botni bitta jarayonda parallel polling rejimida ishlatish
-    tasks = [start_single_bot(t, dp) for t in BOT_TOKENS]
+    tasks = [start_single_bot(t, dp) for t in tokens]
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
