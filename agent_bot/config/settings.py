@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     default_language: str = Field(default="uz", alias="DEFAULT_LANGUAGE")
     debug_mode: bool = Field(default=True, alias="DEBUG_MODE")
 
-    # Cheklovlar
-    rate_limit_per_minute: int = 15
-    max_history_length: int = 12
+    # Cheklovlar yo'q — barcha foydalanuvchilar uchun cheksiz ochiq
+    rate_limit_per_minute: int = 999999
+    max_history_length: int = 20
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -65,7 +65,9 @@ class Settings(BaseSettings):
         return []
 
     def is_user_allowed(self, user_id: int) -> bool:
-        """Foydalanuvchiga ruxsat bor yoki yo'qligini tekshirish."""
+        """Foydalanuvchiga ruxsat bor yoki yo'qligini tekshirish.
+        Agar ro'yxat bo'sh bo'lsa (standart holat), barcha foydalanuvchilar uchun ochiq.
+        """
         if not self.allowed_telegram_ids:
             return True
         return user_id in self.allowed_telegram_ids

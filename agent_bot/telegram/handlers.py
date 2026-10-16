@@ -50,15 +50,7 @@ def _get_user_id(message: Message) -> Optional[int]:
 
 
 def _rate_limited(user_id: int) -> bool:
-    now = time.monotonic()
-    if len(_hits) >= _MAX_TRACKED_USERS and user_id not in _hits:
-        oldest = next(iter(_hits))
-        del _hits[oldest]
-    window = _hits[user_id]
-    window[:] = [t for t in window if now - t < 60]
-    if len(window) >= settings.rate_limit_per_minute:
-        return True
-    window.append(now)
+    """Cheklov olib tashlandi — barcha foydalanuvchilar cheksiz foydalanadi."""
     return False
 
 
@@ -119,7 +111,7 @@ async def _send_result(message: Message, user_id: int, text_override: Optional[s
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(_typing_loop(message.bot, message.chat.id, stop_typing))
     try:
-        result = await orchestrator.handle(user_id, text_override or message.text or "")
+        result = await orchestrator.handle(user_id, text_override or message.text or "", force=True)
     except Exception:
         logger.exception("Orchestrator crashed")
         await message.answer("Ichki xatolik. Keyinroq urinib ko'ring.")
