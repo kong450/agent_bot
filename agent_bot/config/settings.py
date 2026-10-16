@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = Field(default=None, alias="GROQ_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
 
     # Model ID va endpointlar (yagona OpenAI-compat mijoz orqali)
     groq_model: str = Field(default="openai/gpt-oss-20b", alias="GROQ_MODEL")
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
         default="liquid/lfm-2.5-2.6b:free", alias="OPENROUTER_MODEL"
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    anthropic_model: str = Field(default="claude-opus-5-5", alias="ANTHROPIC_MODEL")
     openai_base_url: str = Field(
         default="https://api.openai.com/v1", alias="OPENAI_BASE_URL"
     )

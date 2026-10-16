@@ -88,3 +88,8 @@ class IntentClassifier:
             lang = "en"
 
         return best_intent, confidence, {"language": lang, "score": max_score}
+
+
+# OpenCode va tashqi modullar uchun modul darajasidagi alias
+_SUFFIXES = IntentClassifier._SUFFIXES
+

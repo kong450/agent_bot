@@ -221,3 +221,25 @@ def test_ai_mode_support():
     save_profile(prof)
     assert orch._resolve_model_pref(99999, IntentType.GENERAL_QUERY, "salom") == "gpt6"
 
+
+def test_claude_headers_and_parse():
+    from agent_bot.core.anthropic_client import build_headers, parse_content
+
+    h = build_headers("k")
+    assert h["x-api-key"] == "k" and h["anthropic-version"] == "2023-06-01"
+    data = {"content": [{"type": "text", "text": "salom"}, {"type": "tool_use"}]}
+    assert parse_content(data) == "salom"
+    with pytest.raises(ValueError):
+        parse_content({"content": []})
+
+
+def test_claude_needs_key():
+    import agent_bot.core.anthropic_client as ac
+    from agent_bot.core.anthropic_client import AnthropicClient
+
+    if not ac.settings.anthropic_api_key:
+        with pytest.raises(RuntimeError):
+            AnthropicClient(api_key=None)
+    else:
+        assert AnthropicClient().model
+

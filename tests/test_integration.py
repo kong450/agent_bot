@@ -7,6 +7,7 @@ from agent_bot.config.constants import IntentType
 from agent_bot.tools.python_sandbox import PythonSandbox
 from agent_bot.tools.file_reader import FileReader
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_orchestrator_hardware_flow(tmp_path: Path):
     settings = Settings(data_dir=tmp_path)

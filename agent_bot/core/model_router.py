@@ -22,9 +22,10 @@ class ModelResponse(BaseModel):
 
 class ModelRouter:
     """Universal ko'p modelli aqlli router (Avtomatik Fallback kaskadi).
-    
+
     Ustuvorlik tartibi:
-    1. Google Gemini (gemini-3.8-flash) - 2026-yilgi eng yangi rasmiy flagman model;
+    0. Anthropic Claude (asosiy miya — uzun ufqli agent ishlar), kalit bo'lsa;
+    1. Google Gemini (gemini-3.8-flash);
     2. Groq Cloud (qwen/qwen3.8-27b) - Chaqmoqdek tez (<1 soniya);
     3. OpenRouter (liquid/lfm-2.5-2.6b:free) - Bepul zaxira;
     4. OpenAI (gpt-4o-mini);
@@ -51,22 +52,43 @@ class ModelRouter:
     ) -> ModelResponse:
         # 1. Agar maxsus Gemini so'ralgan bo'lsa
         if model_preference and "gemini" in model_preference.lower() and self._gemini_client:
+            for g_model in ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]:
+                try:
+                    config = {}
+                    if system_instruction:
+                        config["system_instruction"] = system_instruction
+                    response = self._gemini_client.models.generate_content(
+                        model=g_model,
+                        contents=prompt,
+                        config=config
+                    )
+                    return ModelResponse(
+                        content=response.text.strip(),
+                        provider="Google Gemini (2026)",
+                        model_name=g_model
+                    )
+                except Exception as e:
+                    logger.warning(f"Gemini {g_model} API xatoligi: {e}")
+
+        # 0. Anthropic Claude (asosiy miya — barcha murakkab ishni boshqaradi)
+        if self.settings.anthropic_api_key:
             try:
-                config = {}
-                if system_instruction:
-                    config["system_instruction"] = system_instruction
-                response = self._gemini_client.models.generate_content(
-                    model="gemini-3.8-flash",
-                    contents=prompt,
-                    config=config
+                from agent_bot.core.anthropic_client import AnthropicClient
+
+                client = AnthropicClient(
+                    api_key=self.settings.anthropic_api_key,
+                    model=model_preference or self.settings.anthropic_model,
+                )
+                text, used_model = await _call_compat(
+                    client, system_instruction, prompt
                 )
                 return ModelResponse(
-                    content=response.text.strip(),
-                    provider="Google Gemini (2026)",
-                    model_name="gemini-3.8-flash"
+                    content=text,
+                    provider="Anthropic Claude",
+                    model_name=used_model,
                 )
             except Exception as e:
-                logger.error(f"Gemini API xatoligi: {e}")
+                logger.error(f"Claude API xatoligi: {e}. Keyingi provayderga o'tilmoqda...")
 
         # 2. Groq Cloud (openai/gpt-oss-120b GPT-6 Reasoning yoki qwen/qwen3.8-27b Fast)
         if self.settings.groq_api_key:
@@ -77,26 +99,26 @@ class ModelRouter:
             except Exception as e:
                 logger.error(f"Groq API xatoligi: {e}. Gemini provayderiga o'tilmoqda...")
 
-        # 3. Google Gemini (2026-yilgi eng yangi gemini-3.8-flash)
+        # 3. Google Gemini (2026-yilgi eng yangi rasmiy modellar)
         if self._gemini_client:
-            try:
-                model_name = "gemini-3.8-flash"
-                config = {}
-                if system_instruction:
-                    config["system_instruction"] = system_instruction
+            for g_model in ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]:
+                try:
+                    config = {}
+                    if system_instruction:
+                        config["system_instruction"] = system_instruction
 
-                response = self._gemini_client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=config
-                )
-                return ModelResponse(
-                    content=response.text.strip(),
-                    provider="Google Gemini (2026)",
-                    model_name=model_name
-                )
-            except Exception as e:
-                logger.error(f"Gemini API xatoligi: {e}. OpenRouter provayderiga o'tilmoqda...")
+                    response = self._gemini_client.models.generate_content(
+                        model=g_model,
+                        contents=prompt,
+                        config=config
+                    )
+                    return ModelResponse(
+                        content=response.text.strip(),
+                        provider="Google Gemini (2026)",
+                        model_name=g_model
+                    )
+                except Exception as e:
+                    logger.warning(f"Gemini {g_model} API xatoligi: {e}")
 
 
         # 3. OpenRouter (Zaxira bepul provayder)
@@ -190,7 +212,7 @@ class ModelRouter:
         messages.append({"role": "user", "content": prompt})
 
         for m_name in candidate_models:
-            cur_max_tokens = 900 if "qwen" in m_name else 4096
+            cur_max_tokens = 900 if "qwen" in m_name else 1800
             payload = {
                 "model": m_name,
                 "messages": messages,
@@ -230,7 +252,12 @@ class ModelRouter:
             "HTTP-Referer": "https://github.com/agent-bot",
             "X-Title": "Agent Bot"
         }
-        candidate_models = [model] if model else ["liquid/lfm-2.5-2.6b:free", "apodex/apodex-1.1-mini:free"]
+        candidate_models = [model] if model else [
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "liquid/lfm-2.5-2.6b:free"
+        ]
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
@@ -240,7 +267,8 @@ class ModelRouter:
             payload = {
                 "model": m_name,
                 "messages": messages,
-                "temperature": 0.4
+                "temperature": 0.4,
+                "max_tokens": 1500
             }
             try:
                 async with aiohttp.ClientSession() as session:

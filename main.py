@@ -3,6 +3,10 @@ import asyncio
 import logging
 import sys
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -16,10 +20,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOKENS = [
-    "8952983428:AAGkvQcsQ3UURaHPiZdNLecDVc6XsiDmYhU",  # @EVloyiha_bot
-    "8623266794:AAFdC9NfRi4cJIclgl6FSuPz-igtfOEao6w",  # @Metanolloyiha_bot
-]
+# XAVFSIZLIK: jonli tokenni bu yerga HECH QACHON yozmang (git tarixiga tushadi).
+# Tokenlar faqat environment'dan o'qiladi:
+#   TELEGRAM_BOT_TOKENS="tok1,tok2"  (bir nechta bot)
+#   TELEGRAM_BOT_TOKEN="tok1"        (bitta bot)
+DEFAULT_TOKENS: list = []
+
 
 def get_tokens():
     env_tokens = os.environ.get("TELEGRAM_BOT_TOKENS", "").strip()
@@ -28,7 +34,7 @@ def get_tokens():
     single_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if single_token and single_token != "YOUR_BOT_TOKEN":
         return [single_token]
-    return DEFAULT_TOKENS
+    return list(DEFAULT_TOKENS)
 
 async def handle_ping(request):
     return web.Response(text="JARVIS Agent Bot is LIVE and RUNNING! 🚀")
@@ -40,12 +46,30 @@ async def start_web_server():
     app.router.add_get("/health", handle_ping)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logger.info(f"🌐 HTTP Health server port {port} da faol!")
+    try:
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"🌐 HTTP Health server port {port} da faol!")
+    except Exception as e:
+        logger.warning(f"HTTP server port {port} ochilmadi (ehtimol band): {e}")
+
+from aiogram.client.session.aiohttp import AiohttpSession
+
+def create_bot(token: str) -> Bot:
+    """Windows va uzoq kutishlarda [WinError 64] bo'lmasligi uchun xavfsiz session."""
+    session = AiohttpSession(timeout=20.0)
+    session._connector_init["force_close"] = True
+    session._connector_init["enable_cleanup_closed"] = True
+    return Bot(token=token, session=session)
 
 async def main():
     tokens = get_tokens()
+    if not tokens:
+        logger.error(
+            "TELEGRAM_BOT_TOKENS yoki TELEGRAM_BOT_TOKEN topilmadi. "
+            ".env faylga yozing yoki environment'da belgilang."
+        )
+        return
     logger.info(f"⚡ Jami {len(tokens)} ta bot tekshirilmoqda...")
 
     # HTTP Health serverni Render uchun yoqish
@@ -57,10 +81,13 @@ async def main():
 
     active_bots = []
     for token in tokens:
-        bot = Bot(token=token)
+        bot = create_bot(token)
         try:
-            await bot.delete_webhook(drop_pending_updates=True)
-            bot_info = await bot.get_me()
+            try:
+                await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=False), timeout=5.0)
+            except Exception as we:
+                logger.warning(f"delete_webhook ogohlantirish: {we}")
+            bot_info = await asyncio.wait_for(bot.get_me(), timeout=8.0)
             logger.info(f"🚀 Bot muvaffaqiyatli ulandi: @{bot_info.username} (ID: {bot_info.id})")
             active_bots.append(bot)
         except Exception as e:
@@ -71,12 +98,18 @@ async def main():
         logger.error("❌ Birorta ham faol bot topilmadi!")
         return
 
-    try:
-        logger.info(f"⚡ {len(active_bots)} ta bot bir vaqtda parallel polling rejimida ishlamoqda...")
-        await dp.start_polling(*active_bots, handle_signals=False)
-    finally:
-        for bot in active_bots:
-            await bot.session.close()
+    while True:
+        try:
+            logger.info(f"⚡ {len(active_bots)} ta bot bir vaqtda parallel polling rejimida ishlamoqda...")
+            await dp.start_polling(*active_bots, handle_signals=False, polling_timeout=15)
+        except (KeyboardInterrupt, SystemExit):
+            break
+        except Exception as e:
+            logger.error(f"⚠️ Polling uzildi: {e}. 3 soniyadan so'ng avtomatik qayta ulanadi...")
+            await asyncio.sleep(3.0)
+
+    for bot in active_bots:
+        await bot.session.close()
 
 if __name__ == "__main__":
     try:
