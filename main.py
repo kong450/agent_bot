@@ -63,53 +63,63 @@ def create_bot(token: str) -> Bot:
     return Bot(token=token, session=session)
 
 async def main():
-    tokens = get_tokens()
-    if not tokens:
-        logger.error(
-            "TELEGRAM_BOT_TOKENS yoki TELEGRAM_BOT_TOKEN topilmadi. "
-            ".env faylga yozing yoki environment'da belgilang."
-        )
-        return
-    logger.info(f"⚡ Jami {len(tokens)} ta bot tekshirilmoqda...")
-
-    # HTTP Health serverni Render uchun yoqish
+    # 1. HTTP Health serverni Render uchun darhol yoqish (Render health check yiqilmasligi uchun)
     await start_web_server()
 
     dp = Dispatcher()
     dp["orchestrator"] = orchestrator
     dp.include_router(router)
 
-    active_bots = []
-    for token in tokens:
-        bot = create_bot(token)
-        try:
-            try:
-                await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=False), timeout=5.0)
-            except Exception as we:
-                logger.warning(f"delete_webhook ogohlantirish: {we}")
-            bot_info = await asyncio.wait_for(bot.get_me(), timeout=8.0)
-            logger.info(f"🚀 Bot muvaffaqiyatli ulandi: @{bot_info.username} (ID: {bot_info.id})")
-            active_bots.append(bot)
-        except Exception as e:
-            logger.error(f"❌ Bot tokenida xatolik ({token[:15]}...): {e}")
-            await bot.session.close()
-
-    if not active_bots:
-        logger.error("❌ Birorta ham faol bot topilmadi!")
-        return
-
     while True:
+        tokens = get_tokens()
+        if not tokens:
+            logger.error(
+                "TELEGRAM_BOT_TOKENS yoki TELEGRAM_BOT_TOKEN topilmadi. "
+                "Render Environment bo'limida belgilang. 15 soniyadan so'ng qayta tekshiriladi..."
+            )
+            await asyncio.sleep(15.0)
+            continue
+
+        active_bots = []
+        for token in tokens:
+            bot = create_bot(token)
+            try:
+                try:
+                    await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=False), timeout=5.0)
+                except Exception as we:
+                    logger.warning(f"delete_webhook ogohlantirish: {we}")
+                bot_info = await asyncio.wait_for(bot.get_me(), timeout=8.0)
+                logger.info(f"🚀 Bot muvaffaqiyatli ulandi: @{bot_info.username} (ID: {bot_info.id})")
+                active_bots.append(bot)
+            except Exception as e:
+                logger.error(f"❌ Bot tokenida xatolik ({token[:15]}...): {e}")
+                await bot.session.close()
+
+        if not active_bots:
+            logger.error("❌ Birorta ham faol bot topilmadi! Tokenlarni tekshiring. 20 soniyadan so'ng qayta urinadi...")
+            await asyncio.sleep(20.0)
+            continue
+
         try:
-            logger.info(f"⚡ {len(active_bots)} ta bot bir vaqtda parallel polling rejimida ishlamoqda...")
+            logger.info(f"⚡ {len(active_bots)} ta bot parallel polling rejimida ishlamoqda...")
             await dp.start_polling(*active_bots, handle_signals=False, polling_timeout=15)
         except (KeyboardInterrupt, SystemExit):
             break
         except Exception as e:
-            logger.error(f"⚠️ Polling uzildi: {e}. 3 soniyadan so'ng avtomatik qayta ulanadi...")
-            await asyncio.sleep(3.0)
+            logger.error(f"⚠️ Polling uzildi: {e}. 5 soniyadan so'ng qayta ulanadi...")
+            await asyncio.sleep(5.0)
+        finally:
+            for bot in active_bots:
+                try:
+                    await bot.session.close()
+                except Exception:
+                    pass
 
     for bot in active_bots:
-        await bot.session.close()
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     try:
