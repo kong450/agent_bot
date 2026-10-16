@@ -110,10 +110,21 @@ async def _send_result(message: Message, user_id: int, text_override: Optional[s
     await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(_typing_loop(message.bot, message.chat.id, stop_typing))
+    thinking_msg = None
+    try:
+        thinking_msg = await message.answer("💭 Oka, o'ylavomman...")
+    except Exception:
+        pass
+
     try:
         result = await orchestrator.handle(user_id, text_override or message.text or "", force=True)
     except Exception:
         logger.exception("Orchestrator crashed")
+        if thinking_msg:
+            try:
+                await thinking_msg.delete()
+            except Exception:
+                pass
         await message.answer("Ichki xatolik. Keyinroq urinib ko'ring.")
         return
     finally:
@@ -121,6 +132,11 @@ async def _send_result(message: Message, user_id: int, text_override: Optional[s
         typing_task.cancel()
 
     if result.needs_confirmation:
+        if thinking_msg:
+            try:
+                await thinking_msg.delete()
+            except Exception:
+                pass
         if len(_pending_confirm) >= _MAX_TRACKED_USERS:
             _pending_confirm.pop(next(iter(_pending_confirm)))
         _pending_confirm[user_id] = text_override or message.text or ""
@@ -129,7 +145,37 @@ async def _send_result(message: Message, user_id: int, text_override: Optional[s
         return result
 
     chunks = result.chunks or [result.html]
-    for i, chunk in enumerate(chunks):
+    first_chunk_sent = False
+    if thinking_msg:
+        try:
+            await thinking_msg.edit_text(
+                chunks[0],
+                parse_mode=ParseMode.HTML,
+                reply_markup=_actions_keyboard() if len(chunks) == 1 else None,
+            )
+            first_chunk_sent = True
+        except TelegramBadRequest:
+            try:
+                await thinking_msg.edit_text(
+                    result.plain_fallback or "Xatolik",
+                    parse_mode=None,
+                    reply_markup=_actions_keyboard() if len(chunks) == 1 else None,
+                )
+                first_chunk_sent = True
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    if not first_chunk_sent and thinking_msg:
+        try:
+            await thinking_msg.delete()
+        except Exception:
+            pass
+
+    start_idx = 1 if first_chunk_sent else 0
+    for i in range(start_idx, len(chunks)):
+        chunk = chunks[i]
         last = i == len(chunks) - 1
         while True:
             try:
