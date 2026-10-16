@@ -103,10 +103,10 @@ class MetaPromptEngine:
             f"SYSTEM ROLE:\n{role_or_template}\n\n"
             f"LANGUAGE DIRECTIVE: Foydalanuvchining tilida javob bering ('{language}'). O'zbek (lotin/kirill), rus va ingliz tillarini to'liq qo'llab-quvvatlang.\n"
             f"ASOSIY QOIDALAR:\n"
-            f"1. Hech qachon asossiz fakt, soxta formula yoki to'qima ilmiy iqtibos (DOI) keltirmang.\n"
-            f"2. Ma'lumotlarni qat'iy ajrating: [VERIFIED], [CALCULATED], [ESTIMATED].\n"
-            f"3. Topshiriqni to'liq va avtonom bajaring, ruxsat yoki tasdiq so'rab to'xtamang, barcha hisob-kitob, hujjat va yechimlarni oxiriga yetkazing.\n"
-            f"4. Javobni to'g'ridan-to'g'ri, professional, ortiqcha maqtov yoki so'zamolliksiz taqdim eting.\n"
+            f"1. Tabiiy, aqlli, samimiy va jonli yordamchi (JARVIS) kabi erkin muloqot qiling.\n"
+            f"2. Oddiy salomlashuv yoki suhbatlarda hech qanday majburiy qolip, sun'iy sarlavhalar (masalan 'Asosiy xulosa', 'Texnik tahlil', 'Xavf va chegaralar') yoki bo'sh jadvallarni CHIQARMANG — insoniy, do'stona va erkin suhbatlashing.\n"
+            f"3. Aniq texnik, ilmiy, hisob-kitob yoki amaliy topshiriq berilganda, masalani chuqur, mustaqil va yakuniy natijagacha bajaring (hisob-kitoblar, hujjat, kod, qidiruv).\n"
+            f"4. Faktlarni soxtalashtirmang, muhim hisob-kitoblarni ```calc bilan tekshiring.\n"
             f"FORMAT DIRECTIVE (Telegram-safe plain-text Markdown):\n"
             f"- Faqat plain-text Markdown yozing, HTML teg yozmang.\n"
             f"- Ruxsat: # sarlavha, **qalin**, *og'ma*, ~~o'chirilgan~~, `kod`, ```blok```, "
@@ -123,16 +123,21 @@ class MetaPromptEngine:
             f"- ```calc ichida faqat math/statistics/numpy + print ishlatiladi (import os/sys taqiqlangan)."
         )
 
-        structured_prompt = (
-            f"[VAZIFA / MAQSAD]\nFoydalanuvchi bergan topshiriq va unga aloqador barcha ishlarni to'liq, mustaqil va yakuniy natijagacha bajaring. Ruxsat so'rab to'xtab qolmang, barcha hisoblar, hujjatlar va yechimlarni to'liq taqdim eting.\n\n"
-            f"[FOYDALANUVCHI SO'ROVI]\n{user_request}\n\n"
-            f"[LOYIHA KONTEKSTI]\n{project_context if project_context else 'Yangi mustaqil sessiya.'}\n\n"
-            f"[RUXSAT ETILGAN ASBOBLAR]\n{tools_str}\n\n"
-            f"[TALAB QILINADIGAN CHIQISH STRUKTURASI]\n"
-            f"1. Texnik / ilmiy / amaliy tahlil va aniq hisoblar\n"
-            f"2. Barcha tegishli qismlarning to'liq va avtonom bajarilgan yechimi\n"
-            f"3. Yakuniy xulosa va natija"
-        )
+        if intent == IntentType.GENERAL_QUERY:
+            structured_prompt = (
+                f"[FOYDALANUVCHI XABARI]\n{user_request}\n\n"
+                f"[LOYIHA KONTEKSTI]\n{project_context if project_context else 'Yangi sessiya.'}\n\n"
+                f"[KO'RSATMA]\nFoydalanuvchi bilan tabiiy, samimiy, aqlli va jonli yordamchi (JARVIS) kabi erkin suhbatlashing. Majburiy sarlavhalar, bo'sh hisob-kitoblar yoki sun'iy qoliplarni aslo ishlatmang. Foydalanuvchining so'ziga mos, samimiy va insondek javob bering."
+            )
+        else:
+            structured_prompt = (
+                f"[VAZIFA / MAQSAD]\nFoydalanuvchi bergan topshiriq va unga aloqador barcha ishlarni to'liq, mustaqil va yakuniy natijagacha bajaring. Ruxsat so'rab to'xtab qolmang, barcha hisoblar, hujjatlar va yechimlarni to'liq taqdim eting.\n\n"
+                f"[FOYDALANUVCHI SO'ROVI]\n{user_request}\n\n"
+                f"[LOYIHA KONTEKSTI]\n{project_context if project_context else 'Yangi mustaqil sessiya.'}\n\n"
+                f"[RUXSAT ETILGAN ASBOBLAR]\n{tools_str}\n\n"
+                f"[TALAB QILINADIGAN CHIQISH STRUKTURASI]\n"
+                f"Vazifaga mos holda professional tahlil, aniq hisob-kitoblar va yakuniy amaliy yechim taqdim eting."
+            )
 
         return {
             "system_instruction": system_instruction,
