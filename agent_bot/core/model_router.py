@@ -46,7 +46,14 @@ class ModelRouter:
 
     def _gemini_candidates(self, model_preference: Optional[str]) -> list:
         """GEMINI_MODEL env bo'lsa — birinchi o'rinda, keyin avtomatik ro'yxat."""
-        base = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]
+        base = [
+            "gemini-4-argon",
+            "gemma-4-26b-a4b-it",
+            "gemma-4-31b-it",
+            "gemini-3.5-flash-lite",
+            "gemini-flash-latest",
+            "gemini-3.8-flash"
+        ]
         first = model_preference or (self.settings.gemini_model or "").strip()
         if first and first not in base:
             return [first] + base

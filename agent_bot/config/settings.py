@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
 
     # Model ID va endpointlar (yagona OpenAI-compat mijoz orqali)
-    gemini_model: str = Field(default="", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-4-argon", alias="GEMINI_MODEL")
     groq_model: str = Field(default="openai/gpt-oss-20b", alias="GROQ_MODEL")
     openrouter_model: str = Field(
         default="liquid/lfm-2.5-2.6b:free", alias="OPENROUTER_MODEL"
