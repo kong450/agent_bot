@@ -66,10 +66,11 @@ class Settings(BaseSettings):
 
     def is_user_allowed(self, user_id: int) -> bool:
         """Foydalanuvchiga ruxsat bor yoki yo'qligini tekshirish.
-        Agar ro'yxat bo'sh bo'lsa (standart holat), barcha foydalanuvchilar uchun ochiq.
+        XAVFSIZLIK: Agar allowed_telegram_ids bo'sh bo'lsa yoki user ro'yxatda bo'lmasa,
+        begona odamlarga RUXSAT YO'Q (False qaytaradi).
         """
         if not self.allowed_telegram_ids:
-            return True
+            return False
         return user_id in self.allowed_telegram_ids
 
 settings = Settings()

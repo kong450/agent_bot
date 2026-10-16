@@ -50,7 +50,13 @@ def _get_user_id(message: Message) -> Optional[int]:
 
 
 def _rate_limited(user_id: int) -> bool:
-    """Cheklov olib tashlandi — barcha foydalanuvchilar cheksiz foydalanadi."""
+    """Xavfsiz rate limit: 1 daqiqada ko'pi bilan 20 ta so'rov."""
+    now = time.time()
+    user_hits = _hits[user_id]
+    _hits[user_id] = [t for t in user_hits if now - t < 60]
+    if len(_hits[user_id]) >= 20:
+        return True
+    _hits[user_id].append(now)
     return False
 
 
