@@ -44,6 +44,16 @@ class ModelRouter:
             except Exception as e:
                 logger.warning(f"Gemini client xatosi: {e}")
 
+    def _gemini_candidates(self, model_preference: Optional[str]) -> list:
+        """GEMINI_MODEL env bo'lsa — birinchi o'rinda, keyin avtomatik ro'yxat."""
+        base = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]
+        first = model_preference or (self.settings.gemini_model or "").strip()
+        if first and first not in base:
+            return [first] + base
+        if first in base:
+            return [first] + [m for m in base if m != first]
+        return base
+
     async def generate(
         self,
         prompt: str,
@@ -52,7 +62,7 @@ class ModelRouter:
     ) -> ModelResponse:
         # 1. Agar maxsus Gemini so'ralgan bo'lsa
         if model_preference and "gemini" in model_preference.lower() and self._gemini_client:
-            for g_model in ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]:
+            for g_model in self._gemini_candidates(model_preference):
                 try:
                     config = {}
                     if system_instruction:
@@ -101,7 +111,7 @@ class ModelRouter:
 
         # 3. Google Gemini (2026-yilgi eng yangi rasmiy modellar)
         if self._gemini_client:
-            for g_model in ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"]:
+            for g_model in self._gemini_candidates(model_preference):
                 try:
                     config = {}
                     if system_instruction:
