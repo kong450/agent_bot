@@ -65,12 +65,13 @@ class Settings(BaseSettings):
         return []
 
     def is_user_allowed(self, user_id: int) -> bool:
-        """Foydalanuvchiga ruxsat bor yoki yo'qligini tekshirish.
-        XAVFSIZLIK: Agar allowed_telegram_ids bo'sh bo'lsa yoki user ro'yxatda bo'lmasa,
-        begona odamlarga RUXSAT YO'Q (False qaytaradi).
-        """
-        if not self.allowed_telegram_ids:
-            return False
-        return user_id in self.allowed_telegram_ids
+        """Foydalanuvchiga ruxsat bor yoki yo'qligini tekshirish."""
+        try:
+            from agent_bot.config.access_control import is_allowed
+            return is_allowed(user_id)
+        except Exception:
+            if not self.allowed_telegram_ids:
+                return False
+            return user_id in self.allowed_telegram_ids
 
 settings = Settings()

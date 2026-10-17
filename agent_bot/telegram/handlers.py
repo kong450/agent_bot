@@ -27,6 +27,14 @@ from aiogram.types import (
 
 from agent_bot.agents.orchestrator import AgentOrchestrator
 from agent_bot.config.settings import settings
+from agent_bot.config.access_control import (
+    is_admin,
+    is_allowed,
+    allow_user,
+    ban_user,
+    get_all_allowed,
+    DEFAULT_ADMINS,
+)
 from agent_bot.memory.profile import load_profile, save_profile
 
 logger = logging.getLogger(__name__)
@@ -47,6 +55,48 @@ _pending_confirm: Dict[int, str] = {}
 def _get_user_id(message: Message) -> Optional[int]:
     fu = message.from_user
     return fu.id if fu is not None else None
+
+
+_pending_access_requests: Set[int] = set()
+
+async def _handle_unauthorized(message: Message) -> None:
+    fu = message.from_user
+    if not fu or message.bot is None:
+        await message.answer("⚠️ Bot shaxsiy rejimda ishlamoqda. Ruxsat berilmagan.")
+        return
+
+    user_id = fu.id
+    if user_id not in _pending_access_requests:
+        _pending_access_requests.add(user_id)
+        uname = f"@{fu.username}" if fu.username else "(username yo'q)"
+        full_name = f"{fu.first_name or ''} {fu.last_name or ''}".strip()
+        admin_text = (
+            f"🔔 <b>Yangi kirish so'rovi!</b>\n\n"
+            f"👤 <b>Ism:</b> {full_name}\n"
+            f"🔗 <b>Username:</b> {uname}\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n\n"
+            f"Ushbu foydalanuvchiga botdan foydalanishga ruxsat berasizmi?"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Ruxsat berish", callback_data=f"admin_allow:{user_id}"),
+                    InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_deny:{user_id}"),
+                ]
+            ]
+        )
+        for admin_id in DEFAULT_ADMINS:
+            try:
+                await message.bot.send_message(admin_id, admin_text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception as e:
+                logger.warning(f"Admin {admin_id} ga xabar bormadi: {e}")
+
+    await message.answer(
+        "🔒 <b>Kechirasiz, bot shaxsiy rejimda ishlamoqda.</b>\n\n"
+        "Ruxsat so'rovingiz avtomatik ravishda adminga yuborildi. "
+        "Admin tasdiqlashi bilan sizga bildirishnoma keladi.",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def _rate_limited(user_id: int) -> bool:
@@ -215,7 +265,7 @@ async def _send_result(message: Message, user_id: int, text_override: Optional[s
 async def cmd_start(message: Message) -> None:
     user_id = _get_user_id(message)
     if user_id is None or not settings.is_user_allowed(user_id):
-        await message.answer("Ruxsat yo'q.")
+        await _handle_unauthorized(message)
         return
     await message.answer(
         "Salom! Men <b>Agent Bot (JARVIS)</b> — GPT-6 darajasidagi avtonom muhandislik, apparatura va tahlil yordamchingiz.\n\n"
@@ -360,7 +410,7 @@ async def on_voice(message: Message) -> None:
     if user_id is None:
         return
     if not settings.is_user_allowed(user_id):
-        await message.answer("Ruxsat yo'q.")
+        await _handle_unauthorized(message)
         return
     if _rate_limited(user_id):
         await message.answer("Juda tez yuboryapsiz. 1 daqiqadan so'ng urinib ko'ring.")
@@ -398,7 +448,7 @@ async def on_text(message: Message) -> None:
         return
 
     if not settings.is_user_allowed(user_id):
-        await message.answer("Ruxsat yo'q.")
+        await _handle_unauthorized(message)
         return
     if _rate_limited(user_id):
         await message.answer("Juda tez yuboryapsiz. 1 daqiqadan so'ng urinib ko'ring.")
@@ -531,7 +581,7 @@ async def on_photo(message: Message) -> None:
     if user_id is None:
         return
     if not settings.is_user_allowed(user_id):
-        await message.answer("Ruxsat yo'q.")
+        await _handle_unauthorized(message)
         return
     if _rate_limited(user_id):
         await message.answer("Juda tez yuboryapsiz. 1 daqiqadan so'ng urinib ko'ring.")
@@ -572,11 +622,122 @@ async def on_photo(message: Message) -> None:
         await message.answer(f"❌ Rasmni o'qishda xatolik yuz berdi: {str(exc)}")
 
 
+# ==============================================================================
+# ADMIN BOSHQARUV TIZIMI (Ruxsat berish / Bekor qilish / Ko'rish)
+# ==============================================================================
+
+@router.callback_query(F.data.startswith("admin_allow:"))
+async def cb_admin_allow(query: CallbackQuery) -> None:
+    """Admin bitta tugma bilan foydalanuvchiga ruxsat beradi."""
+    admin_id = query.from_user.id if query.from_user else None
+    if admin_id is None or not is_admin(admin_id):
+        await query.answer("Siz admin emassiz!", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":")[1])
+    allow_user(target_id)
+    _pending_access_requests.discard(target_id)
+    await query.answer("✅ Foydalanuvchiga ruxsat berildi!")
+
+    if query.message and isinstance(query.message, Message):
+        await query.message.edit_text(
+            f"✅ <b>Ruxsat berildi!</b>\nFoydalanuvchi ID: <code>{target_id}</code> tizimga qo'shildi.",
+            parse_mode=ParseMode.HTML,
+        )
+
+    if query.bot:
+        try:
+            await query.bot.send_message(
+                target_id,
+                "🎉 <b>Tabriklaymiz!</b> Admin sizga botdan foydalanish uchun ruxsat berdi.\n\n"
+                "Endi /start tugmasini bosib botdan bemalol foydalanishingiz mumkin!",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.warning(f"Foydalanuvchi {target_id} ga xabar yetib bormadi: {e}")
+
+
+@router.callback_query(F.data.startswith("admin_deny:"))
+async def cb_admin_deny(query: CallbackQuery) -> None:
+    """Admin so'rovni rad etadi."""
+    admin_id = query.from_user.id if query.from_user else None
+    if admin_id is None or not is_admin(admin_id):
+        await query.answer("Siz admin emassiz!", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":")[1])
+    _pending_access_requests.discard(target_id)
+    await query.answer("So'rov rad etildi.")
+
+    if query.message and isinstance(query.message, Message):
+        await query.message.edit_text(
+            f"❌ <b>Rad etildi.</b>\nFoydalanuvchi ID: <code>{target_id}</code> ga ruxsat berilmadi.",
+            parse_mode=ParseMode.HTML,
+        )
+
+
+@router.message(Command("allow"))
+async def cmd_allow(message: Message) -> None:
+    """Admin qo'lda ID orqali ruxsat beradi: /allow 123456789"""
+    user_id = _get_user_id(message)
+    if user_id is None or not is_admin(user_id):
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("Ishlatish: <code>/allow 123456789</code>", parse_mode=ParseMode.HTML)
+        return
+
+    target_id = int(parts[1])
+    allow_user(target_id)
+    await message.answer(f"✅ ID <code>{target_id}</code> muvaffaqiyatli ruxsat berilganlar ro'yxatiga qo'shildi.", parse_mode=ParseMode.HTML)
+    if message.bot:
+        try:
+            await message.bot.send_message(
+                target_id,
+                "🎉 Admin sizga botdan foydalanishga ruxsat berdi. /start bosing!",
+            )
+        except Exception:
+            pass
+
+
+@router.message(Command("ban"))
+async def cmd_ban(message: Message) -> None:
+    """Admin foydalanuvchini bloklaydi: /ban 123456789"""
+    user_id = _get_user_id(message)
+    if user_id is None or not is_admin(user_id):
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("Ishlatish: <code>/ban 123456789</code>", parse_mode=ParseMode.HTML)
+        return
+
+    target_id = int(parts[1])
+    if ban_user(target_id):
+        await message.answer(f"🚫 ID <code>{target_id}</code> botdan bloklandi.", parse_mode=ParseMode.HTML)
+    else:
+        await message.answer("Adminni bloklab bo'lmaydi.")
+
+
+@router.message(Command("users"))
+async def cmd_users(message: Message) -> None:
+    """Ruxsat berilgan barcha foydalanuvchilar ro'yxati."""
+    user_id = _get_user_id(message)
+    if user_id is None or not is_admin(user_id):
+        return
+
+    users = get_all_allowed()
+    text = "👥 <b>Ruxsat berilgan foydalanuvchilar:</b>\n\n" + "\n".join(f"• <code>{u}</code>" for u in sorted(users))
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
 @router.message()
 async def on_non_text(message: Message) -> None:
     """Matn bo'lmagan boshqa xabarlar (stiker/video) uchun javob."""
     user_id = _get_user_id(message)
     if user_id is None or not settings.is_user_allowed(user_id):
+        await _handle_unauthorized(message)
         return
     await message.answer(
         "Menga matn, rasm (sxema/chizma) yoki hujjat yuboring. Men uni tahlil qilib beraman."
