@@ -53,6 +53,24 @@ async def start_web_server():
     except Exception as e:
         logger.warning(f"HTTP server port {port} ochilmadi (ehtimol band): {e}")
 
+async def _keep_alive_loop():
+    """Render bepul tarifida 15 daqiqada uxlab qolmasligi uchun har 8 daqiqada ping yuboradi."""
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+    if not render_url:
+        return
+    logger.info(f"🔄 Render Keep-Alive ping faollashtirildi: {render_url}")
+    await asyncio.sleep(60.0)
+    import aiohttp
+    while True:
+        try:
+            target = f"{render_url}/health" if not render_url.endswith("/health") else render_url
+            async with aiohttp.ClientSession() as session:
+                async with session.get(target, timeout=aiohttp.ClientTimeout(total=15.0)) as resp:
+                    logger.info(f"⚡ Keep-alive ping muvaffaqiyatli: {resp.status}")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping xatosi: {e}")
+        await asyncio.sleep(480.0)
+
 from aiogram.client.session.aiohttp import AiohttpSession
 
 def create_bot(token: str) -> Bot:
@@ -65,6 +83,8 @@ def create_bot(token: str) -> Bot:
 async def main():
     # 1. HTTP Health serverni Render uchun darhol yoqish (Render health check yiqilmasligi uchun)
     await start_web_server()
+    # 2. Render uxlab qolmasligi uchun avtomatik fon pingi
+    asyncio.create_task(_keep_alive_loop())
 
     dp = Dispatcher()
     dp["orchestrator"] = orchestrator
