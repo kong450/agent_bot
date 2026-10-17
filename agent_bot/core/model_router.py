@@ -269,12 +269,27 @@ class ModelRouter:
             "HTTP-Referer": "https://github.com/agent-bot",
             "X-Title": "Agent Bot"
         }
-        candidate_models = [model] if (model and "/" in model) else [
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        free_models = [
+            "google/gemma-4-31b-it:free",
             "google/gemma-4-26b-a4b-it:free",
-            "liquid/lfm-2.5-2.6b:free"
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "liquid/lfm-2.5-2.6b:free",
+            "cohere/north-mini-code:free",
+            "poolside/laguna-s-2.1:free",
+            "poolside/laguna-xs-2.1:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "thinkingmachines/inkling:free",
+            "thinkingmachines/inkling-small:free",
+            "dots-studio/dots-3-note-preview:free",
         ]
+        if model and "/" in model:
+            candidate_models = [model] + [m for m in free_models if m != model]
+        else:
+            candidate_models = free_models
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
